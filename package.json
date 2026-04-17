@@ -1,6 +1,6 @@
 {
   "name": "casami",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Gestione spese di casa per mamma — tutto locale, tema cani",
   "main": "out/main/index.js",
   "author": "Casami",

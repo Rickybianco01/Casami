@@ -56,6 +56,9 @@ export function Home() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 pt-4 pb-6 space-y-4">
+      <h1 className="text-center text-3xl font-heading font-bold text-terracotta-600 pt-2">
+        Il portafoglio di Elena
+      </h1>
       <div className="card flex items-center gap-4">
         <Biscotto mood="happy" size={96} />
         <div className="flex-1">
