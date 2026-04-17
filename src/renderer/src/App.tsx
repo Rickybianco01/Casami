@@ -11,6 +11,7 @@ import { MonthlyRecap } from './screens/MonthlyRecap'
 import { Categories } from './screens/Categories'
 import { Budgets } from './screens/Budgets'
 import { Recurring } from './screens/Recurring'
+import { Scheduled } from './screens/Scheduled'
 import { Shopping } from './screens/Shopping'
 import { SettingsScreen } from './screens/Settings'
 import { BackupScreen } from './screens/Backup'
@@ -67,6 +68,7 @@ export default function App() {
         <Route path="/categorie" element={<Categories />} />
         <Route path="/budget" element={<Budgets />} />
         <Route path="/ricorrenti" element={<Recurring />} />
+        <Route path="/scadenziario" element={<Scheduled />} />
         <Route path="/lista-spesa" element={<Shopping />} />
         <Route path="/impostazioni" element={<SettingsScreen />} />
         <Route path="/backup" element={<BackupScreen />} />

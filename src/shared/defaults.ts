@@ -25,6 +25,7 @@ export function initialDB(): DBSchema {
     budgets: [],
     recurring: [],
     shopping: [],
+    scheduled: [],
     settings: {
       firstLaunchDone: false,
       backupFolder: null,

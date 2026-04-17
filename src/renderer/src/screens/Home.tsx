@@ -1,15 +1,44 @@
 import { useEffect, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Plus, ArrowRight, ChevronRight, ShoppingBasket, Repeat, Wallet } from 'lucide-react'
+import {
+  Plus,
+  ArrowRight,
+  ChevronRight,
+  ShoppingBasket,
+  Repeat,
+  Wallet,
+  CalendarClock,
+  Check
+} from 'lucide-react'
 import { useExpenseStore } from '../stores/expenseStore'
 import { useCategoryStore } from '../stores/categoryStore'
 import { useBudgetStore } from '../stores/budgetStore'
-import { currentMonth, monthLabel, prettyDate } from '../lib/dates'
+import { useScheduledStore } from '../stores/scheduledStore'
+import {
+  currentMonth,
+  monthLabel,
+  prettyDate,
+  todayIso,
+  daysUntil,
+  isOverdue,
+  shortDate
+} from '../lib/dates'
 import { formatEuro } from '../lib/format'
 import { CategoryBadge } from '../components/CategoryBadge'
 import { Button } from '../components/Button'
 import { Biscotto } from '../mascot/Biscotto'
 import { it } from '@shared/i18n'
+
+function upcomingLabel(due: string, today: string): string {
+  const diff = daysUntil(due, today)
+  if (diff === 0) return it.scheduled.today
+  if (diff === 1) return it.scheduled.tomorrow
+  if (diff < 0) {
+    const n = Math.abs(diff)
+    return n === 1 ? it.scheduled.overdueByOne : it.scheduled.overdueBy.replace('{days}', String(n))
+  }
+  return it.scheduled.dueIn.replace('{days}', String(diff))
+}
 
 export function Home() {
   const nav = useNavigate()
@@ -17,10 +46,27 @@ export function Home() {
   const { expenses, summary, loadMonth } = useExpenseStore()
   const byId = useCategoryStore((s) => s.byId)
   const { budgets, reload: reloadBudgets } = useBudgetStore()
+  const {
+    items: scheduledItems,
+    reload: reloadScheduled,
+    markPaid: markScheduledPaid
+  } = useScheduledStore()
+  const today = todayIso()
 
   useEffect(() => {
     reloadBudgets()
   }, [reloadBudgets])
+
+  useEffect(() => {
+    reloadScheduled()
+  }, [reloadScheduled])
+
+  const upcomingScheduled = useMemo(() => {
+    return [...scheduledItems]
+      .filter((s) => !s.paidOn)
+      .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+      .slice(0, 3)
+  }, [scheduledItems])
 
   const recent = useMemo(
     () =>
@@ -177,6 +223,50 @@ export function Home() {
                       style={{ width: `${Math.round(pct * 100)}%` }}
                     />
                   </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-heading font-bold flex items-center gap-2">
+            <CalendarClock className="text-terra-700" /> {it.scheduled.upcoming}
+          </h2>
+          <Link
+            to="/scadenziario"
+            className="text-terra-700 font-semibold inline-flex items-center gap-1 hover:underline"
+          >
+            {it.home.viewAll} <ArrowRight size={18} />
+          </Link>
+        </div>
+        {upcomingScheduled.length === 0 ? (
+          <p className="text-ink-500 mt-3">{it.scheduled.empty}</p>
+        ) : (
+          <ul className="mt-3 divide-y divide-cream-300">
+            {upcomingScheduled.map((s) => {
+              const cat = byId(s.categoryId)
+              const overdue = isOverdue(s.dueDate, today, s.paidOn)
+              return (
+                <li key={s.id} className="py-3 flex items-center gap-3">
+                  <CategoryBadge category={cat} withLabel={false} size={40} />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold truncate">{s.name}</p>
+                    <p className={`text-sm ${overdue ? 'text-danger-600 font-semibold' : 'text-ink-500'}`}>
+                      {upcomingLabel(s.dueDate, today)} · {shortDate(s.dueDate)}
+                    </p>
+                  </div>
+                  <p className="font-bold text-lg whitespace-nowrap">{formatEuro(s.amountCents)}</p>
+                  <button
+                    type="button"
+                    aria-label={it.scheduled.markPaid}
+                    onClick={() => markScheduledPaid(s.id, today)}
+                    className="h-11 w-11 rounded-full bg-olive-500 hover:bg-olive-600 text-cream-50 flex items-center justify-center transition"
+                  >
+                    <Check size={22} />
+                  </button>
                 </li>
               )
             })}

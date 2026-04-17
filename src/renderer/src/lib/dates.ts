@@ -1,4 +1,17 @@
-import { format, parseISO, startOfMonth, endOfMonth, isToday, isYesterday, addMonths, subMonths, differenceInCalendarDays } from 'date-fns'
+import {
+  format,
+  parseISO,
+  startOfMonth,
+  endOfMonth,
+  isToday,
+  isYesterday,
+  addMonths,
+  subMonths,
+  addDays,
+  differenceInCalendarDays,
+  startOfWeek,
+  endOfWeek
+} from 'date-fns'
 import { it } from 'date-fns/locale'
 
 export function todayIso(): string {
@@ -61,4 +74,83 @@ export function daysInMonth(monthKey: string): number {
   return endOfMonth(start).getDate()
 }
 
-export { format, parseISO, startOfMonth, endOfMonth, isToday, isYesterday, differenceInCalendarDays }
+export function weekStartIso(iso: string): string {
+  const d = parseISO(iso)
+  return format(startOfWeek(d, { weekStartsOn: 1 }), 'yyyy-MM-dd')
+}
+
+export function weekEndIso(iso: string): string {
+  const d = parseISO(iso)
+  return format(endOfWeek(d, { weekStartsOn: 1 }), 'yyyy-MM-dd')
+}
+
+export function monthStartIso(monthKey: string): string {
+  return format(startOfMonth(parseISO(`${monthKey}-01`)), 'yyyy-MM-dd')
+}
+
+export function monthEndIso(monthKey: string): string {
+  return format(endOfMonth(parseISO(`${monthKey}-01`)), 'yyyy-MM-dd')
+}
+
+export function addDaysIso(iso: string, n: number): string {
+  return format(addDays(parseISO(iso), n), 'yyyy-MM-dd')
+}
+
+export function isOverdue(dueIso: string, todayIsoStr: string, paidOn: string | null): boolean {
+  if (paidOn) return false
+  return dueIso < todayIsoStr
+}
+
+export function daysUntil(iso: string, fromIso: string): number {
+  return differenceInCalendarDays(parseISO(iso), parseISO(fromIso))
+}
+
+export type MonthCell = {
+  iso: string
+  inMonth: boolean
+  isToday: boolean
+  weekday: number
+}
+
+export function monthMatrix(monthKey: string, todayIsoStr: string): MonthCell[] {
+  const first = parseISO(`${monthKey}-01`)
+  const gridStart = startOfWeek(startOfMonth(first), { weekStartsOn: 1 })
+  const gridEnd = endOfWeek(endOfMonth(first), { weekStartsOn: 1 })
+  const cells: MonthCell[] = []
+  let cursor = gridStart
+  while (cursor <= gridEnd) {
+    const iso = format(cursor, 'yyyy-MM-dd')
+    cells.push({
+      iso,
+      inMonth: format(cursor, 'yyyy-MM') === monthKey,
+      isToday: iso === todayIsoStr,
+      weekday: cursor.getDay()
+    })
+    cursor = addDays(cursor, 1)
+  }
+  return cells
+}
+
+export function groupByWeek<T extends { dueDate: string }>(
+  items: T[]
+): Array<{ weekStart: string; weekEnd: string; items: T[] }> {
+  const map = new Map<string, { weekStart: string; weekEnd: string; items: T[] }>()
+  for (const item of items) {
+    const ws = weekStartIso(item.dueDate)
+    const we = weekEndIso(item.dueDate)
+    const bucket = map.get(ws)
+    if (bucket) bucket.items.push(item)
+    else map.set(ws, { weekStart: ws, weekEnd: we, items: [item] })
+  }
+  return Array.from(map.values()).sort((a, b) => a.weekStart.localeCompare(b.weekStart))
+}
+
+export function weekLabel(weekStart: string, weekEnd: string): string {
+  const a = parseISO(weekStart)
+  const b = parseISO(weekEnd)
+  const sameMonth = format(a, 'yyyy-MM') === format(b, 'yyyy-MM')
+  if (sameMonth) return `${format(a, 'd')} – ${format(b, 'd MMMM', { locale: it })}`
+  return `${format(a, 'd MMM', { locale: it })} – ${format(b, 'd MMM yyyy', { locale: it })}`
+}
+
+export { format, parseISO, startOfMonth, endOfMonth, isToday, isYesterday, differenceInCalendarDays, addDays, startOfWeek, endOfWeek }

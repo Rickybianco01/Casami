@@ -65,6 +65,20 @@ export interface ShoppingItem {
   createdAt: string
 }
 
+export interface ScheduledExpense {
+  id: ID
+  name: string
+  amountCents: number
+  categoryId: ID
+  dueDate: string
+  paidOn: string | null
+  note: string | null
+  sourceRecurringId: ID | null
+  expenseId: ID | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface Settings {
   firstLaunchDone: boolean
   backupFolder: string | null
@@ -82,7 +96,20 @@ export interface DBSchema {
   budgets: Budget[]
   recurring: RecurringExpense[]
   shopping: ShoppingItem[]
+  scheduled: ScheduledExpense[]
   settings: Settings
+}
+
+export interface ScheduledRangeSummary {
+  rangeStart: string
+  rangeEnd: string
+  totalCents: number
+  paidCents: number
+  unpaidCents: number
+  overdueCents: number
+  count: number
+  paidCount: number
+  overdueCount: number
 }
 
 export interface MonthlySummary {

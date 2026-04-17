@@ -4,6 +4,8 @@ import type {
   Budget,
   RecurringExpense,
   ShoppingItem,
+  ScheduledExpense,
+  ScheduledRangeSummary,
   Settings,
   MonthlySummary,
   IpcResult,
@@ -50,6 +52,7 @@ type CasamiBridge = {
       patch: Partial<Omit<RecurringExpense, 'id' | 'createdAt'>>
     ) => Promise<IpcResult<RecurringExpense>>
     remove: (id: ID) => Promise<IpcResult<boolean>>
+    materialize: (today: string) => Promise<IpcResult<number>>
   }
   shopping: {
     list: () => Promise<IpcResult<ShoppingItem[]>>
@@ -57,6 +60,33 @@ type CasamiBridge = {
     toggle: (id: ID) => Promise<IpcResult<ShoppingItem>>
     remove: (id: ID) => Promise<IpcResult<boolean>>
     clearDone: () => Promise<IpcResult<number>>
+  }
+  scheduled: {
+    list: () => Promise<IpcResult<ScheduledExpense[]>>
+    listByRange: (start: string, end: string) => Promise<IpcResult<ScheduledExpense[]>>
+    get: (id: ID) => Promise<IpcResult<ScheduledExpense | null>>
+    create: (input: {
+      name: string
+      amountCents: number
+      categoryId: ID
+      dueDate: string
+      note?: string | null
+      sourceRecurringId?: ID | null
+    }) => Promise<IpcResult<ScheduledExpense>>
+    update: (
+      id: ID,
+      patch: Partial<
+        Pick<ScheduledExpense, 'name' | 'amountCents' | 'categoryId' | 'dueDate' | 'note'>
+      >
+    ) => Promise<IpcResult<ScheduledExpense>>
+    markPaid: (id: ID, paidOn: string) => Promise<IpcResult<ScheduledExpense>>
+    markUnpaid: (id: ID) => Promise<IpcResult<ScheduledExpense>>
+    remove: (id: ID, cascadeExpense?: boolean) => Promise<IpcResult<boolean>>
+    summary: (
+      start: string,
+      end: string,
+      today: string
+    ) => Promise<IpcResult<ScheduledRangeSummary>>
   }
   settings: {
     get: () => Promise<IpcResult<Settings>>
@@ -133,7 +163,8 @@ export const ipc = {
       unwrap(window.casami.recurring.create(input)),
     update: (id: ID, patch: Partial<Omit<RecurringExpense, 'id' | 'createdAt'>>) =>
       unwrap(window.casami.recurring.update(id, patch)),
-    remove: (id: ID) => unwrap(window.casami.recurring.remove(id))
+    remove: (id: ID) => unwrap(window.casami.recurring.remove(id)),
+    materialize: (today: string) => unwrap(window.casami.recurring.materialize(today))
   },
   shopping: {
     list: () => unwrap(window.casami.shopping.list()),
@@ -141,6 +172,32 @@ export const ipc = {
     toggle: (id: ID) => unwrap(window.casami.shopping.toggle(id)),
     remove: (id: ID) => unwrap(window.casami.shopping.remove(id)),
     clearDone: () => unwrap(window.casami.shopping.clearDone())
+  },
+  scheduled: {
+    list: () => unwrap(window.casami.scheduled.list()),
+    listByRange: (start: string, end: string) =>
+      unwrap(window.casami.scheduled.listByRange(start, end)),
+    get: (id: ID) => unwrap(window.casami.scheduled.get(id)),
+    create: (input: {
+      name: string
+      amountCents: number
+      categoryId: ID
+      dueDate: string
+      note?: string | null
+      sourceRecurringId?: ID | null
+    }) => unwrap(window.casami.scheduled.create(input)),
+    update: (
+      id: ID,
+      patch: Partial<
+        Pick<ScheduledExpense, 'name' | 'amountCents' | 'categoryId' | 'dueDate' | 'note'>
+      >
+    ) => unwrap(window.casami.scheduled.update(id, patch)),
+    markPaid: (id: ID, paidOn: string) => unwrap(window.casami.scheduled.markPaid(id, paidOn)),
+    markUnpaid: (id: ID) => unwrap(window.casami.scheduled.markUnpaid(id)),
+    remove: (id: ID, cascadeExpense = true) =>
+      unwrap(window.casami.scheduled.remove(id, cascadeExpense)),
+    summary: (start: string, end: string, today: string) =>
+      unwrap(window.casami.scheduled.summary(start, end, today))
   },
   settings: {
     get: () => unwrap(window.casami.settings.get()),

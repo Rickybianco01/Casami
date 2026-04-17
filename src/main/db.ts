@@ -11,6 +11,8 @@ import type {
   Budget,
   RecurringExpense,
   ShoppingItem,
+  ScheduledExpense,
+  ScheduledRangeSummary,
   Settings,
   MonthlySummary,
   ID
@@ -62,6 +64,7 @@ export async function initDB(): Promise<void> {
   if (!Array.isArray(db.data.budgets)) db.data.budgets = []
   if (!Array.isArray(db.data.recurring)) db.data.recurring = []
   if (!Array.isArray(db.data.shopping)) db.data.shopping = []
+  if (!Array.isArray(db.data.scheduled)) db.data.scheduled = []
 
   await db.write()
 }
@@ -307,6 +310,56 @@ export async function removeRecurring(id: ID): Promise<void> {
   await persist()
 }
 
+function advanceDueDate(iso: string, frequency: RecurringExpense['frequency']): string {
+  const [y, m, day] = iso.split('-').map(Number)
+  const months = frequency === 'monthly' ? 1
+    : frequency === 'bimonthly' ? 2
+    : frequency === 'quarterly' ? 3
+    : 12
+  const base = new Date(Date.UTC(y, m - 1, day))
+  base.setUTCMonth(base.getUTCMonth() + months)
+  return base.toISOString().slice(0, 10)
+}
+
+export async function materializeDueRecurring(today: string): Promise<number> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) throw new Error('Data non valida')
+  const d = getDB()
+  let created = 0
+  const MAX_ITER = 240
+  for (const r of d.data.recurring) {
+    if (!r.active) continue
+    if (r.amountCents == null || r.amountCents <= 0) continue
+    if (!d.data.categories.some((c) => c.id === r.categoryId)) continue
+    let iter = 0
+    while (r.nextDue <= today && iter < MAX_ITER) {
+      const existing = d.data.scheduled.find(
+        (s) => s.sourceRecurringId === r.id && s.dueDate === r.nextDue
+      )
+      if (!existing) {
+        const s: ScheduledExpense = {
+          id: nanoid(10),
+          name: r.name,
+          amountCents: r.amountCents,
+          categoryId: r.categoryId,
+          dueDate: r.nextDue,
+          paidOn: null,
+          note: null,
+          sourceRecurringId: r.id,
+          expenseId: null,
+          createdAt: now(),
+          updatedAt: now()
+        }
+        d.data.scheduled.push(s)
+        created += 1
+      }
+      r.nextDue = advanceDueDate(r.nextDue, r.frequency)
+      iter += 1
+    }
+  }
+  await persist()
+  return created
+}
+
 export async function listShopping(): Promise<ShoppingItem[]> {
   return [...getDB().data.shopping].sort(
     (a, b) => Number(a.checked) - Number(b.checked) || a.createdAt.localeCompare(b.createdAt)
@@ -345,6 +398,252 @@ export async function clearCheckedShopping(): Promise<void> {
   const d = getDB()
   d.data.shopping = d.data.shopping.filter((i) => !i.checked)
   await persist()
+}
+
+export interface CreateScheduledInput {
+  name: string
+  amountCents: number
+  categoryId: ID
+  dueDate: string
+  note?: string | null
+  sourceRecurringId?: ID | null
+}
+
+export interface UpdateScheduledInput {
+  name?: string
+  amountCents?: number
+  categoryId?: ID
+  dueDate?: string
+  note?: string | null
+}
+
+function validateScheduledInput(input: Partial<CreateScheduledInput>): void {
+  if (input.amountCents !== undefined) {
+    if (!Number.isFinite(input.amountCents) || input.amountCents <= 0) {
+      throw new Error('Importo non valido')
+    }
+  }
+  if (input.dueDate !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(input.dueDate)) {
+    throw new Error('Data scadenza non valida')
+  }
+  if (input.name !== undefined && !input.name.trim()) {
+    throw new Error('Nome obbligatorio')
+  }
+}
+
+export async function listScheduled(): Promise<ScheduledExpense[]> {
+  return [...getDB().data.scheduled].sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+}
+
+export async function listScheduledByRange(
+  rangeStart: string,
+  rangeEnd: string
+): Promise<ScheduledExpense[]> {
+  return getDB().data.scheduled
+    .filter((s) => s.dueDate >= rangeStart && s.dueDate <= rangeEnd)
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+}
+
+export async function getScheduled(id: ID): Promise<ScheduledExpense | null> {
+  return getDB().data.scheduled.find((s) => s.id === id) ?? null
+}
+
+export async function createScheduled(input: CreateScheduledInput): Promise<ScheduledExpense> {
+  validateScheduledInput(input)
+  const d = getDB()
+  if (!d.data.categories.some((c) => c.id === input.categoryId)) {
+    throw new Error('Categoria non valida')
+  }
+  const s: ScheduledExpense = {
+    id: nanoid(10),
+    name: input.name.trim(),
+    amountCents: Math.round(input.amountCents),
+    categoryId: input.categoryId,
+    dueDate: input.dueDate,
+    paidOn: null,
+    note: input.note ?? null,
+    sourceRecurringId: input.sourceRecurringId ?? null,
+    expenseId: null,
+    createdAt: now(),
+    updatedAt: now()
+  }
+  d.data.scheduled.push(s)
+  await persist()
+  return s
+}
+
+export async function updateScheduled(
+  id: ID,
+  patch: UpdateScheduledInput
+): Promise<ScheduledExpense> {
+  validateScheduledInput(patch)
+  const d = getDB()
+  const idx = d.data.scheduled.findIndex((s) => s.id === id)
+  if (idx < 0) throw new Error('Scadenza non trovata')
+  const cur = d.data.scheduled[idx]
+  if (patch.categoryId && !d.data.categories.some((c) => c.id === patch.categoryId)) {
+    throw new Error('Categoria non valida')
+  }
+  const next: ScheduledExpense = {
+    ...cur,
+    ...patch,
+    name: patch.name !== undefined ? patch.name.trim() : cur.name,
+    amountCents:
+      patch.amountCents !== undefined ? Math.round(patch.amountCents) : cur.amountCents,
+    id: cur.id,
+    updatedAt: now()
+  }
+  d.data.scheduled[idx] = next
+
+  if (next.paidOn && next.expenseId) {
+    const eIdx = d.data.expenses.findIndex((e) => e.id === next.expenseId)
+    if (eIdx >= 0 && d.data.expenses[eIdx].deletedAt === null) {
+      d.data.expenses[eIdx] = {
+        ...d.data.expenses[eIdx],
+        amountCents: next.amountCents,
+        categoryId: next.categoryId,
+        note: next.note,
+        updatedAt: now()
+      }
+    }
+  }
+
+  await persist()
+  return next
+}
+
+export async function markScheduledPaid(id: ID, paidOn: string): Promise<ScheduledExpense> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(paidOn)) throw new Error('Data pagamento non valida')
+  const d = getDB()
+  const idx = d.data.scheduled.findIndex((s) => s.id === id)
+  if (idx < 0) throw new Error('Scadenza non trovata')
+  const cur = d.data.scheduled[idx]
+
+  let expenseId = cur.expenseId
+  if (expenseId) {
+    const eIdx = d.data.expenses.findIndex((e) => e.id === expenseId)
+    if (eIdx >= 0) {
+      d.data.expenses[eIdx] = {
+        ...d.data.expenses[eIdx],
+        amountCents: cur.amountCents,
+        categoryId: cur.categoryId,
+        occurredOn: paidOn,
+        note: cur.note,
+        deletedAt: null,
+        updatedAt: now()
+      }
+    } else {
+      expenseId = null
+    }
+  }
+
+  if (!expenseId) {
+    const exp: Expense = {
+      id: nanoid(10),
+      amountCents: cur.amountCents,
+      categoryId: cur.categoryId,
+      occurredOn: paidOn,
+      note: cur.note,
+      createdAt: now(),
+      updatedAt: now(),
+      deletedAt: null,
+      recurringExpenseId: cur.sourceRecurringId
+    }
+    d.data.expenses.push(exp)
+    expenseId = exp.id
+  }
+
+  const next: ScheduledExpense = {
+    ...cur,
+    paidOn,
+    expenseId,
+    updatedAt: now()
+  }
+  d.data.scheduled[idx] = next
+  await persist()
+  return next
+}
+
+export async function markScheduledUnpaid(id: ID): Promise<ScheduledExpense> {
+  const d = getDB()
+  const idx = d.data.scheduled.findIndex((s) => s.id === id)
+  if (idx < 0) throw new Error('Scadenza non trovata')
+  const cur = d.data.scheduled[idx]
+
+  if (cur.expenseId) {
+    const eIdx = d.data.expenses.findIndex((e) => e.id === cur.expenseId)
+    if (eIdx >= 0) {
+      d.data.expenses[eIdx] = {
+        ...d.data.expenses[eIdx],
+        deletedAt: now(),
+        updatedAt: now()
+      }
+    }
+  }
+
+  const next: ScheduledExpense = {
+    ...cur,
+    paidOn: null,
+    expenseId: null,
+    updatedAt: now()
+  }
+  d.data.scheduled[idx] = next
+  await persist()
+  return next
+}
+
+export async function removeScheduled(id: ID, cascadeExpense = true): Promise<void> {
+  const d = getDB()
+  const cur = d.data.scheduled.find((s) => s.id === id)
+  if (!cur) return
+  if (cascadeExpense && cur.expenseId) {
+    const eIdx = d.data.expenses.findIndex((e) => e.id === cur.expenseId)
+    if (eIdx >= 0 && d.data.expenses[eIdx].deletedAt === null) {
+      d.data.expenses[eIdx] = {
+        ...d.data.expenses[eIdx],
+        deletedAt: now(),
+        updatedAt: now()
+      }
+    }
+  }
+  d.data.scheduled = d.data.scheduled.filter((s) => s.id !== id)
+  await persist()
+}
+
+export async function scheduledSummary(
+  rangeStart: string,
+  rangeEnd: string,
+  today: string
+): Promise<ScheduledRangeSummary> {
+  const items = await listScheduledByRange(rangeStart, rangeEnd)
+  let paidCents = 0
+  let unpaidCents = 0
+  let overdueCents = 0
+  let paidCount = 0
+  let overdueCount = 0
+  for (const s of items) {
+    if (s.paidOn) {
+      paidCents += s.amountCents
+      paidCount += 1
+    } else {
+      unpaidCents += s.amountCents
+      if (s.dueDate < today) {
+        overdueCents += s.amountCents
+        overdueCount += 1
+      }
+    }
+  }
+  return {
+    rangeStart,
+    rangeEnd,
+    totalCents: paidCents + unpaidCents,
+    paidCents,
+    unpaidCents,
+    overdueCents,
+    count: items.length,
+    paidCount,
+    overdueCount
+  }
 }
 
 export async function getSettings(): Promise<Settings> {

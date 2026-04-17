@@ -25,11 +25,21 @@ import {
   createRecurring,
   updateRecurring,
   removeRecurring,
+  materializeDueRecurring,
   listShopping,
   addShoppingItem,
   toggleShoppingItem,
   removeShoppingItem,
   clearCheckedShopping,
+  listScheduled,
+  listScheduledByRange,
+  getScheduled,
+  createScheduled,
+  updateScheduled,
+  markScheduledPaid,
+  markScheduledUnpaid,
+  removeScheduled,
+  scheduledSummary,
   getSettings,
   updateSettings,
   exportBackupFile,
@@ -139,6 +149,10 @@ function registerIpc(): void {
     )
   )
   ipcMain.handle('recurring:remove', safeHandler((id: string) => removeRecurring(id)))
+  ipcMain.handle(
+    'recurring:materialize',
+    safeHandler((today: string) => materializeDueRecurring(today))
+  )
 
   // shopping
   ipcMain.handle('shopping:list', safeHandler(() => listShopping()))
@@ -146,6 +160,41 @@ function registerIpc(): void {
   ipcMain.handle('shopping:toggle', safeHandler((id: string) => toggleShoppingItem(id)))
   ipcMain.handle('shopping:remove', safeHandler((id: string) => removeShoppingItem(id)))
   ipcMain.handle('shopping:clearDone', safeHandler(() => clearCheckedShopping()))
+
+  // scheduled
+  ipcMain.handle('scheduled:list', safeHandler(() => listScheduled()))
+  ipcMain.handle(
+    'scheduled:listByRange',
+    safeHandler((start: string, end: string) => listScheduledByRange(start, end))
+  )
+  ipcMain.handle('scheduled:get', safeHandler((id: string) => getScheduled(id)))
+  ipcMain.handle(
+    'scheduled:create',
+    safeHandler((input: Parameters<typeof createScheduled>[0]) => createScheduled(input))
+  )
+  ipcMain.handle(
+    'scheduled:update',
+    safeHandler((id: string, patch: Parameters<typeof updateScheduled>[1]) =>
+      updateScheduled(id, patch)
+    )
+  )
+  ipcMain.handle(
+    'scheduled:markPaid',
+    safeHandler((id: string, paidOn: string) => markScheduledPaid(id, paidOn))
+  )
+  ipcMain.handle('scheduled:markUnpaid', safeHandler((id: string) => markScheduledUnpaid(id)))
+  ipcMain.handle(
+    'scheduled:remove',
+    safeHandler((id: string, cascadeExpense: boolean = true) =>
+      removeScheduled(id, cascadeExpense)
+    )
+  )
+  ipcMain.handle(
+    'scheduled:summary',
+    safeHandler((start: string, end: string, today: string) =>
+      scheduledSummary(start, end, today)
+    )
+  )
 
   // settings
   ipcMain.handle('settings:get', safeHandler(() => getSettings()))
@@ -253,6 +302,11 @@ app.whenReady().then(async () => {
   registerIpc()
   initUpdater()
   await sweepDeleted(24)
+  try {
+    await materializeDueRecurring(new Date().toISOString().slice(0, 10))
+  } catch {
+    /* best effort */
+  }
   createWindow()
   scheduleUpdateChecks()
 

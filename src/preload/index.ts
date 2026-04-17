@@ -30,7 +30,8 @@ const api = {
     list: () => invoke('recurring:list'),
     create: (input: unknown) => invoke('recurring:create', input),
     update: (id: string, patch: unknown) => invoke('recurring:update', id, patch),
-    remove: (id: string) => invoke('recurring:remove', id)
+    remove: (id: string) => invoke('recurring:remove', id),
+    materialize: (today: string) => invoke('recurring:materialize', today)
   },
   shopping: {
     list: () => invoke('shopping:list'),
@@ -38,6 +39,19 @@ const api = {
     toggle: (id: string) => invoke('shopping:toggle', id),
     remove: (id: string) => invoke('shopping:remove', id),
     clearDone: () => invoke('shopping:clearDone')
+  },
+  scheduled: {
+    list: () => invoke('scheduled:list'),
+    listByRange: (start: string, end: string) => invoke('scheduled:listByRange', start, end),
+    get: (id: string) => invoke('scheduled:get', id),
+    create: (input: unknown) => invoke('scheduled:create', input),
+    update: (id: string, patch: unknown) => invoke('scheduled:update', id, patch),
+    markPaid: (id: string, paidOn: string) => invoke('scheduled:markPaid', id, paidOn),
+    markUnpaid: (id: string) => invoke('scheduled:markUnpaid', id),
+    remove: (id: string, cascadeExpense = true) =>
+      invoke('scheduled:remove', id, cascadeExpense),
+    summary: (start: string, end: string, today: string) =>
+      invoke('scheduled:summary', start, end, today)
   },
   settings: {
     get: () => invoke('settings:get'),
